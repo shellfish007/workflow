@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useLayoutEffect, useState, useEffect, useCallback } from "react";
-import { motion } from "framer-motion";
+import { motion, useMotionValue } from "framer-motion";
 
 // --- Engine (ported from src/engine.ts) ---
 
@@ -68,38 +68,53 @@ function bezierMid(x0, y0, cx1, cy1, cx2, cy2, x1, y1) {
   };
 }
 
-const NodeCard = forwardRef(function NodeCard({ title, state, type, isSelected, isLinkTarget, onClick, onAction, onDrag }, ref) {
+const NodeCard = forwardRef(function NodeCard({ title, state, type, isSelected, isLinkTarget, onClick, onAction, onDrag, onDragEnd, savedX, savedY }, ref) {
   const s = STATE_CLS[state] ?? STATE_CLS["blocked"];
   const actionLabel = TYPE_LABELS[type] || "Approve";
 
   const canAct = state === 'not started' || state === 'waiting';
 
+  const x = useMotionValue(savedX || 0);
+  const y = useMotionValue(savedY || 0);
+
   return (
     <motion.div
       ref={ref}
-      onClick={onClick}
-      drag
+      onTap={onClick}
+      drag={!isLinkTarget}
       dragMomentum={false}
+      style={{ x, y }}
       onDrag={onDrag}
-      whileHover={{ y: -2, scale: 1.015 }}
+      onDragEnd={(e, info) => {
+        onDragEnd?.(x.get(), y.get());
+      }}
+      onPointerDown={(e) => e.stopPropagation()}
+      whileHover={{ scale: 1.015 }}
       whileDrag={{ scale: 1.05, zIndex: 50 }}
       transition={{ duration: 0.15 }}
       className={isLinkTarget ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}
     >
-      <div className={`relative w-56 rounded-[22px] border-2 bg-white/95 backdrop-blur p-5 space-y-3.5 transition-shadow ${s.card} ${isSelected ? "ring-2 ring-blue-600 ring-offset-3" : ""} ${isLinkTarget ? "ring-2 ring-blue-400 ring-offset-3" : ""}`}>
+      <div className={`relative w-52 rounded-2xl border-2 bg-white/95 backdrop-blur p-3.5 space-y-2.5 transition-shadow ${s.card} ${isSelected ? "ring-2 ring-blue-600 ring-offset-2" : ""} ${isLinkTarget ? "ring-2 ring-blue-400 ring-offset-2" : ""}`}>
+        {isLinkTarget && (
+          <div
+            className="absolute inset-0 z-10 rounded-2xl cursor-crosshair"
+            onPointerDown={(e) => e.stopPropagation()}
+            onPointerUp={(e) => { e.stopPropagation(); onClick(); }}
+          />
+        )}
         <div className="flex items-start justify-between gap-2">
-          <span className="text-base font-semibold text-slate-800 tracking-tight leading-snug">{title}</span>
-          <span className={`h-3 w-3 rounded-full flex-shrink-0 mt-0.5 ring-2 ring-white ${s.dot}`} />
+          <span className="text-sm font-semibold text-slate-800 tracking-tight leading-snug">{title}</span>
+          <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 mt-0.5 ring-2 ring-white ${s.dot}`} />
         </div>
         <div className="flex items-center gap-2">
-          <span className={`inline-flex rounded-full border px-3 py-1 text-sm font-medium ${s.badge}`}>
+          <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${s.badge}`}>
             {state}
           </span>
         </div>
         {state !== 'done' && state !== 'blocked' && (
           <button
             onClick={(e) => { e.stopPropagation(); onAction(); }}
-            className="w-full rounded-2xl border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 py-3.5 text-lg font-bold text-emerald-600 cursor-pointer transition-all shadow-sm"
+            className="w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 py-2 text-sm font-bold text-emerald-600 cursor-pointer transition-all shadow-sm"
           >
             Done
           </button>
@@ -113,7 +128,8 @@ function ConnectButton({ id, linkSource, onConnect }) {
   const isActive = linkSource === id;
   return (
     <button
-      onClick={(e) => { e.stopPropagation(); onConnect(id); }}
+      onPointerDown={(e) => { e.stopPropagation(); }}
+      onPointerUp={(e) => { e.stopPropagation(); onConnect(id); }}
       title={isActive ? "Cancel connection" : "Draw arrow from this node"}
       className={`flex-shrink-0 w-9 h-9 rounded-full border-2 flex items-center justify-center text-base font-bold transition-all shadow-sm ${
         isActive
@@ -128,6 +144,7 @@ function ConnectButton({ id, linkSource, onConnect }) {
 
 export default function WorkflowMockup() {
   const containerRef = useRef(null);
+  const innerRef = useRef(null);
   const nodeEls = useRef({});
   const [edgePaths, setEdgePaths] = useState([]);
   const [selectedId, setSelectedId] = useState(null);
@@ -148,6 +165,46 @@ export default function WorkflowMockup() {
   const [newNodeDeps, setNewNodeDeps] = useState([]);
 
   const refFor = (id) => (el) => { nodeEls.current[id] = el; };
+  const dragOffsets = useRef({});
+
+  // --- Canvas pan & zoom ---
+  const [pan, setPan] = useState({ x: 0, y: 0 });
+  const [zoom, setZoom] = useState(1);
+  const isPanning = useRef(false);
+  const panStart = useRef({ x: 0, y: 0, panX: 0, panY: 0 });
+
+  const handleCanvasPointerDown = (e) => {
+    // Only pan on background clicks (not on cards/buttons)
+    if (e.target !== e.currentTarget && !e.target.closest('[data-canvas-bg]')) return;
+    isPanning.current = true;
+    panStart.current = { x: e.clientX, y: e.clientY, panX: pan.x, panY: pan.y };
+    e.currentTarget.setPointerCapture(e.pointerId);
+  };
+
+  const handleCanvasPointerMove = (e) => {
+    if (!isPanning.current) return;
+    setPan({
+      x: panStart.current.panX + (e.clientX - panStart.current.x),
+      y: panStart.current.panY + (e.clientY - panStart.current.y),
+    });
+  };
+
+  const handleCanvasPointerUp = () => {
+    isPanning.current = false;
+  };
+
+  const handleWheel = useCallback((e) => {
+    e.preventDefault();
+    const delta = e.deltaY > 0 ? -0.05 : 0.05;
+    setZoom(z => Math.min(2, Math.max(0.3, z + delta)));
+  }, []);
+
+  useEffect(() => {
+    const el = containerRef.current;
+    if (!el) return;
+    el.addEventListener('wheel', handleWheel, { passive: false });
+    return () => el.removeEventListener('wheel', handleWheel);
+  }, [handleWheel]);
 
   // --- Data helpers ---
 
@@ -207,6 +264,7 @@ export default function WorkflowMockup() {
   };
 
   const handleCardClick = (id) => {
+
     setSelectedEdge(null);
     if (linkSource && linkSource !== id) {
       // Add dep: target task now depends on linkSource
@@ -224,6 +282,7 @@ export default function WorkflowMockup() {
   };
 
   const handleConnectClick = (id) => {
+
     if (linkSource === id) {
       setLinkSource(null);
     } else {
@@ -288,21 +347,22 @@ export default function WorkflowMockup() {
   }, []);
 
   useLayoutEffect(() => {
-    const ctr = containerRef.current;
-    if (!ctr) return;
-    const cb = ctr.getBoundingClientRect();
+    const inner = innerRef.current;
+    if (!inner) return;
+    const cb = inner.getBoundingClientRect();
+    const s = zoom; // account for scale in measurements
 
     const measure = (id) => {
       const el = nodeEls.current[id];
       if (!el) return null;
       const r = el.getBoundingClientRect();
       return {
-        left:   r.left   - cb.left,
-        right:  r.right  - cb.left,
-        top:    r.top    - cb.top,
-        bottom: r.bottom - cb.top,
-        cx:     (r.left + r.right)  / 2 - cb.left,
-        cy:     (r.top  + r.bottom) / 2 - cb.top,
+        left:   (r.left   - cb.left) / s,
+        right:  (r.right  - cb.left) / s,
+        top:    (r.top    - cb.top) / s,
+        bottom: (r.bottom - cb.top) / s,
+        cx:     ((r.left + r.right)  / 2 - cb.left) / s,
+        cy:     ((r.top  + r.bottom) / 2 - cb.top) / s,
       };
     };
 
@@ -321,9 +381,19 @@ export default function WorkflowMockup() {
         } else {
           [x0, y0, x1, y1] = [s.cx, s.top, d.cx, d.bottom + GAP];
         }
-        path = `M ${x0} ${y0} L ${x1} ${y1}`;
-        mx = (x0 + x1) / 2;
-        my = (y0 + y1) / 2;
+        const dxOff = Math.abs(x1 - x0);
+        if (dxOff < 2) {
+          path = `M ${x0} ${y0} L ${x1} ${y1}`;
+          mx = (x0 + x1) / 2;
+          my = (y0 + y1) / 2;
+        } else {
+          const dyOff = Math.abs(y1 - y0);
+          const cp = Math.max(dyOff * 0.5, 30);
+          const cx1 = x0, cy1 = y0 + (y1 > y0 ? cp : -cp);
+          const cx2 = x1, cy2 = y1 + (y1 > y0 ? -cp : cp);
+          path = `M ${x0} ${y0} C ${cx1} ${cy1}, ${cx2} ${cy2}, ${x1} ${y1}`;
+          ({ mx, my } = bezierMid(x0, y0, cx1, cy1, cx2, cy2, x1, y1));
+        }
       } else if (type === "h") {
         let x0, y0, x1, y1, cx1, cy1, cx2, cy2;
         if (s.right <= d.left) {
@@ -352,7 +422,7 @@ export default function WorkflowMockup() {
     }).filter(Boolean);
 
     setEdgePaths(computed);
-  }, [tasks, layoutTick]);
+  }, [tasks, layoutTick, zoom, pan]);
 
   // --- Derived view data ---
 
@@ -379,6 +449,12 @@ export default function WorkflowMockup() {
           onClick={() => handleCardClick(id)}
           onAction={() => handleAction(id)}
           onDrag={() => setLayoutTick(t => t + 1)}
+          onDragEnd={(finalX, finalY) => {
+            dragOffsets.current[id] = { x: finalX, y: finalY };
+            setLayoutTick(t => t + 1);
+          }}
+          savedX={dragOffsets.current[id]?.x || 0}
+          savedY={dragOffsets.current[id]?.y || 0}
         />
         <div className={`transition-opacity ${linkSource === id ? "opacity-100" : "opacity-0 group-hover:opacity-100"}`}>
           <ConnectButton id={id} linkSource={linkSource} onConnect={handleConnectClick} />
@@ -402,24 +478,24 @@ export default function WorkflowMockup() {
   const colWidth = Math.floor(88 / colCount);
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-b from-blue-50 via-sky-50 to-white p-6 flex flex-col gap-4">
+    <div className="h-screen overflow-hidden bg-gradient-to-b from-blue-50 via-sky-50 to-white p-4 flex flex-col gap-3">
 
       {/* Header */}
-      <div className="flex-shrink-0 rounded-3xl border border-blue-100 bg-white/70 backdrop-blur shadow-md px-6 py-4">
+      <div className="flex-shrink-0 rounded-2xl border border-blue-100 bg-white/70 backdrop-blur shadow-md px-5 py-3">
         <div className="flex items-center justify-between">
-          <div>
-            <h1 className="text-3xl font-bold text-slate-800 tracking-tight">Workflow</h1>
-            <p className="text-base text-slate-500 mt-1">{tasks.length} tasks across {taskGroups.length} groups</p>
+          <div className="flex items-baseline gap-3">
+            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Workflow</h1>
+            <p className="text-sm text-slate-400">{tasks.length} tasks &middot; {taskGroups.length} groups</p>
           </div>
-          <div className="flex items-center gap-3">
+          <div className="flex items-center gap-2 flex-wrap">
             {counts.map(({ state, n }) => (
-              <span key={state} className={`rounded-full border px-3.5 py-1 text-sm font-semibold ${BADGE_CLS[state]}`}>
+              <span key={state} className={`rounded-full border px-3 py-0.5 text-xs font-semibold ${BADGE_CLS[state]}`}>
                 {n} {state}
               </span>
             ))}
             <button
               onClick={() => setHideCompleted(h => !h)}
-              className={`ml-2 flex items-center gap-2 rounded-full border px-4 py-1 text-sm font-semibold transition-colors ${
+              className={`ml-1 flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-semibold transition-colors ${
                 hideCompleted
                   ? "bg-emerald-100 text-emerald-700 border-emerald-300"
                   : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
@@ -433,15 +509,20 @@ export default function WorkflowMockup() {
       </div>
 
       {/* Body */}
-      <div className="flex gap-6 flex-1 min-h-0">
+      <div className="flex gap-4 flex-1 min-h-0">
 
         {/* Canvas card */}
-        <div className="flex-1 min-h-0 rounded-[32px] border border-blue-100 bg-white/80 backdrop-blur shadow-md p-6">
+        <div className="flex-1 min-h-0 rounded-2xl border border-blue-100 bg-white/80 backdrop-blur shadow-md p-3">
           <div
             ref={containerRef}
-            className="relative w-full h-full rounded-[28px] bg-gradient-to-b from-white to-blue-50/60 border border-blue-100/80 overflow-auto"
+            onPointerDown={handleCanvasPointerDown}
+            onPointerMove={handleCanvasPointerMove}
+            onPointerUp={handleCanvasPointerUp}
+            className="relative w-full h-full rounded-[28px] bg-gradient-to-b from-white to-blue-50/60 border border-blue-100/80 overflow-hidden cursor-grab active:cursor-grabbing"
+            data-canvas-bg
           >
-            <svg className="absolute inset-0 w-full h-full z-20" style={{ pointerEvents: "none" }}>
+            <div ref={innerRef} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }} className="relative w-fit h-fit">
+            <svg className="absolute inset-0 z-20" style={{ pointerEvents: "none", width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
                 <marker id="arr-green"  markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
                   <path d="M0,0 L7,3.5 L0,7 Z" fill="#34d399" />
@@ -475,7 +556,8 @@ export default function WorkflowMockup() {
                       stroke="transparent"
                       strokeWidth={16}
                       style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                      onClick={() => setSelectedEdge(isSelected ? null : key)}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={() => setSelectedEdge(isSelected ? null : key)}
                     />
                     <path
                       d={path}
@@ -488,11 +570,6 @@ export default function WorkflowMockup() {
                       filter={animated && !isSelected ? "url(#glow)" : undefined}
                       style={{ pointerEvents: "none" }}
                     />
-                    {animated && !isSelected && (
-                      <path d={path} fill="none" stroke={stroke} strokeWidth={3} strokeLinecap="round" strokeDasharray="8 24" opacity={0.6} style={{ pointerEvents: "none" }}>
-                        <animate attributeName="stroke-dashoffset" from="32" to="0" dur="1.4s" repeatCount="indefinite" />
-                      </path>
-                    )}
                   </g>
                 );
               })}
@@ -504,23 +581,26 @@ export default function WorkflowMockup() {
                 key={key}
                 initial={{ opacity: 0, scale: 0.7 }}
                 animate={{ opacity: 1, scale: 1 }}
-                onClick={() => { deleteEdge(key); setSelectedEdge(null); }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={() => { deleteEdge(key); setSelectedEdge(null); }}
                 title="Delete arrow"
                 style={{ left: mx - 14, top: my - 14 }}
-                className="absolute w-7 h-7 rounded-full bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-xs font-bold shadow-lg z-20 transition-colors"
+                className="absolute w-7 h-7 rounded-full bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-xs font-bold shadow-lg z-30 transition-colors"
               >
                 ✕
               </motion.button>
             ))}
 
             {/* Dynamic columns */}
-            <div className="relative z-10 flex gap-6 justify-around px-6 py-6 min-w-fit">
+            <div className="relative z-10 flex gap-8 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
               {taskGroups.map((group) => (
-                <div key={group} className="flex flex-col items-center gap-5 flex-1 min-w-0">
-                  <div className="text-xl font-bold tracking-tight text-slate-700">{group}</div>
-                  <span className="rounded-full bg-white/90 px-4 py-1.5 text-sm font-semibold text-blue-700 border border-blue-100 shadow-sm">
-                    {tasksByGroup[group].length} tasks
-                  </span>
+                <div key={group} className="flex flex-col items-center gap-8" style={{ minWidth: 260 }}>
+                  <div className="sticky top-0 z-10 flex flex-col items-center gap-2 bg-white/90 backdrop-blur rounded-2xl px-4 py-2 border border-blue-100/60 shadow-sm w-full">
+                    <div className="text-base font-bold tracking-tight text-slate-700 capitalize">{group}</div>
+                    <span className="rounded-full bg-blue-50 px-3 py-0.5 text-xs font-semibold text-blue-600 border border-blue-100">
+                      {tasksByGroup[group].length} tasks
+                    </span>
+                  </div>
                   {(() => {
                     // Group sibling nodes (same deps) into rows
                     const groupTasks = tasksByGroup[group];
@@ -557,6 +637,15 @@ export default function WorkflowMockup() {
               ))}
             </div>
 
+            </div>{/* close transform wrapper */}
+
+            {/* Zoom controls */}
+            <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 bg-white/90 backdrop-blur rounded-xl border border-slate-200 shadow-sm px-1 py-1">
+              <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 font-bold text-sm">−</button>
+              <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="px-2 h-7 rounded-lg hover:bg-slate-100 text-xs font-medium text-slate-500 min-w-[3rem]">{Math.round(zoom * 100)}%</button>
+              <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 font-bold text-sm">+</button>
+            </div>
+
             {/* Hint toast */}
             {linkSource && (
               <motion.div
@@ -571,7 +660,7 @@ export default function WorkflowMockup() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-80 flex-shrink-0 flex flex-col gap-5 overflow-y-auto">
+        <div className="w-72 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
           {/* New Node button / form */}
           {showNewNodeForm ? (
             <div className="rounded-3xl border border-blue-100 shadow-md bg-white/80 backdrop-blur p-6 space-y-4">
