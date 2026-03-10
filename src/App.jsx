@@ -176,6 +176,8 @@ export default function WorkflowMockup() {
 
   // New node form + edit mode
   const [hideCompleted, setHideCompleted] = useState(true);
+  const [searchQuery, setSearchQuery] = useState("");
+  const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
   const [showNewNodeForm, setShowNewNodeForm] = useState(false);
   const [editingNode, setEditingNode] = useState(null); // { task, subtask, type, deps }
   const [newNodeTask, setNewNodeTask] = useState("");
@@ -260,7 +262,16 @@ export default function WorkflowMockup() {
 
   // --- Derive columns dynamically ---
 
-  const visibleTasks = hideCompleted ? tasks.filter(t => t.state !== 'done') : tasks;
+  const visibleTasks = tasks.filter(t => {
+    if (hideCompleted && t.state === 'done') return false;
+    if (searchQuery) {
+      const q = searchQuery.toLowerCase();
+      return (t.subtask || '').toLowerCase().includes(q) ||
+             (t.task || '').toLowerCase().includes(q) ||
+             (t.type || '').toLowerCase().includes(q);
+    }
+    return true;
+  });
   const taskGroups = [...new Set(visibleTasks.map(t => t.task))];
   const tasksByGroup = {};
   const nodeCol = {};
@@ -514,6 +525,23 @@ export default function WorkflowMockup() {
             <h1 className="text-lg font-semibold text-slate-800 tracking-tight">Workflow</h1>
             <p className="text-sm text-slate-400 font-normal">{tasks.length} tasks &middot; {taskGroups.length} groups</p>
           </div>
+          <div className="relative">
+            <input
+              type="text"
+              placeholder="Search tasks..."
+              value={searchQuery}
+              onChange={(e) => setSearchQuery(e.target.value)}
+              className="rounded-full text-[12px] px-3 py-1 w-40 border border-slate-200/70 focus:outline-none focus:ring-1 focus:ring-blue-400 bg-white text-slate-600 placeholder-slate-400"
+            />
+            {searchQuery && (
+              <button
+                onClick={() => setSearchQuery("")}
+                className="absolute right-2 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 text-[12px] leading-none"
+              >
+                &times;
+              </button>
+            )}
+          </div>
           <div className="flex items-center gap-1.5 flex-wrap">
             {counts.map(({ state, n }) => (
               <span key={state} className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${BADGE_CLS[state]}`}>
@@ -554,6 +582,22 @@ export default function WorkflowMockup() {
             className="relative w-full h-full rounded-lg bg-slate-50/50 overflow-hidden cursor-grab active:cursor-grabbing"
             data-canvas-bg
           >
+            {visibleTasks.length === 0 && (
+              <div className="absolute inset-0 z-20 flex flex-col items-center justify-center gap-3">
+                <span className="text-slate-400 text-sm">No tasks to show</span>
+                <span className="text-slate-400/70 text-xs">
+                  {hideCompleted && tasks.length > 0
+                    ? "Toggle 'Hide done' to see completed tasks"
+                    : "Add a node to get started"}
+                </span>
+                <button
+                  onClick={() => setShowNewNodeForm(true)}
+                  className="mt-2 px-3 py-1.5 text-xs text-slate-500 border border-slate-200 rounded-md hover:bg-slate-100 transition-colors"
+                >
+                  + Add node
+                </button>
+              </div>
+            )}
             <div ref={innerRef} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }} className="relative w-fit h-fit">
 
             {/* Dynamic columns */}
@@ -676,6 +720,52 @@ export default function WorkflowMockup() {
               <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="w-6 h-6 rounded hover:bg-slate-100 text-slate-400 text-xs">−</button>
               <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="px-1.5 h-6 rounded hover:bg-slate-100 text-[11px] text-slate-400 min-w-[2.5rem]">{Math.round(zoom * 100)}%</button>
               <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="w-6 h-6 rounded hover:bg-slate-100 text-slate-400 text-xs">+</button>
+              <div className="w-px h-4 bg-slate-200/80 mx-0.5" />
+              <button
+                onClick={() => {
+                  const container = containerRef.current;
+                  const inner = innerRef.current;
+                  if (!container || !inner) return;
+                  // Collect bounding rects of all visible node elements relative to inner (untransformed)
+                  const ids = visibleTasks.map(t => t.id);
+                  const rects = [];
+                  const innerRect = inner.getBoundingClientRect();
+                  const currentZoom = zoom;
+                  ids.forEach(id => {
+                    const el = nodeEls.current[id];
+                    if (!el) return;
+                    const r = el.getBoundingClientRect();
+                    rects.push({
+                      left:   (r.left   - innerRect.left) / currentZoom,
+                      right:  (r.right  - innerRect.left) / currentZoom,
+                      top:    (r.top    - innerRect.top)  / currentZoom,
+                      bottom: (r.bottom - innerRect.top)  / currentZoom,
+                    });
+                  });
+                  if (rects.length === 0) return;
+                  const minX = Math.min(...rects.map(r => r.left));
+                  const maxX = Math.max(...rects.map(r => r.right));
+                  const minY = Math.min(...rects.map(r => r.top));
+                  const maxY = Math.max(...rects.map(r => r.bottom));
+                  const contentW = maxX - minX;
+                  const contentH = maxY - minY;
+                  if (contentW <= 0 || contentH <= 0) return;
+                  const padding = 40;
+                  const containerW = container.clientWidth - padding * 2;
+                  const containerH = container.clientHeight - padding * 2;
+                  const newZoom = Math.min(2, Math.max(0.3, Math.min(containerW / contentW, containerH / contentH)));
+                  const centerX = (minX + maxX) / 2;
+                  const centerY = (minY + maxY) / 2;
+                  const newPanX = container.clientWidth / 2 - centerX * newZoom;
+                  const newPanY = container.clientHeight / 2 - centerY * newZoom;
+                  setZoom(newZoom);
+                  setPan({ x: newPanX, y: newPanY });
+                }}
+                title="Fit to view"
+                className="w-6 h-6 rounded hover:bg-slate-100 text-slate-400 text-xs"
+              >
+                ⊞
+              </button>
             </div>
 
             {/* Hint toast */}
@@ -699,8 +789,16 @@ export default function WorkflowMockup() {
             animate={{ opacity: 1, x: 0 }}
             exit={{ opacity: 0, x: 20 }}
             transition={{ duration: 0.15 }}
-            className="absolute top-0 right-0 z-40 w-64 max-h-full flex flex-col gap-3 overflow-y-auto p-3"
+            className={`absolute top-0 right-0 z-40 max-h-full flex flex-col gap-3 overflow-y-auto p-3 ${sidebarCollapsed ? 'w-10' : 'w-64'}`}
           >
+            <button
+              onClick={() => setSidebarCollapsed(c => !c)}
+              className="self-end flex-shrink-0 w-7 h-7 rounded-full border border-slate-200/70 bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-600 text-sm font-medium flex items-center justify-center transition-colors shadow-sm"
+              title={sidebarCollapsed ? 'Expand sidebar' : 'Collapse sidebar'}
+            >
+              {sidebarCollapsed ? '\u2039' : '\u203A'}
+            </button>
+            {!sidebarCollapsed && (<>
             {showNewNodeForm && (
               <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3.5">
                 <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">New Node</div>
@@ -960,6 +1058,7 @@ export default function WorkflowMockup() {
                 )}
               </>
             )}
+            </>)}
           </motion.div>
         )}
         </AnimatePresence>
