@@ -1,5 +1,5 @@
 import { forwardRef, useRef, useLayoutEffect, useState, useEffect, useCallback } from "react";
-import { motion, useMotionValue } from "framer-motion";
+import { motion, AnimatePresence, useMotionValue } from "framer-motion";
 
 // --- Engine (ported from src/engine.ts) ---
 
@@ -151,9 +151,10 @@ export default function WorkflowMockup() {
   const [tasks, setTasks] = useState([]);
   const [loading, setLoading] = useState(true);
 
-  // New node form
+  // New node form + edit mode
   const [hideCompleted, setHideCompleted] = useState(true);
   const [showNewNodeForm, setShowNewNodeForm] = useState(false);
+  const [editingNode, setEditingNode] = useState(null); // { task, subtask, type, deps }
   const [newNodeTask, setNewNodeTask] = useState("");
   const [newNodeSubtask, setNewNodeSubtask] = useState("");
   const [newNodeType, setNewNodeType] = useState("approval");
@@ -280,6 +281,7 @@ export default function WorkflowMockup() {
       setLinkSource(null);
     } else {
       setSelectedId(id === selectedId ? null : id);
+      setEditingNode(null);
     }
   };
 
@@ -506,15 +508,21 @@ export default function WorkflowMockup() {
               <span className={`inline-block w-2.5 h-2.5 rounded-sm border transition-colors ${hideCompleted ? "bg-emerald-500 border-emerald-500" : "border-slate-300"}`} />
               Hide done
             </button>
+            <button
+              onClick={() => setShowNewNodeForm(s => !s)}
+              className="ml-1.5 rounded-full border border-slate-200/70 bg-white hover:bg-slate-50 text-slate-500 hover:text-slate-700 px-2.5 py-0.5 text-[11px] font-medium transition-colors"
+            >
+              + Node
+            </button>
           </div>
         </div>
       </div>
 
       {/* Body */}
-      <div className="flex gap-4 flex-1 min-h-0">
+      <div className="relative flex-1 min-h-0">
 
         {/* Canvas card */}
-        <div className="flex-1 min-h-0 rounded-xl border border-slate-200/70 bg-white shadow-sm p-2">
+        <div className="w-full h-full rounded-xl border border-slate-200/70 bg-white shadow-sm p-2">
           <div
             ref={containerRef}
             onPointerDown={handleCanvasPointerDown}
@@ -524,77 +532,9 @@ export default function WorkflowMockup() {
             data-canvas-bg
           >
             <div ref={innerRef} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }} className="relative w-fit h-fit">
-            <svg className="absolute inset-0 z-20" style={{ pointerEvents: "none", width: '100%', height: '100%', overflow: 'visible' }}>
-              <defs>
-                <marker id="arr-green"  markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L12,6 L0,12 Z" fill="#34d399" />
-                </marker>
-                <marker id="arr-sky"    markerWidth="14" markerHeight="14" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L10,5 L0,10 Z" fill="#7dd3fc" />
-                </marker>
-                <marker id="arr-muted"  markerWidth="14" markerHeight="14" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8" />
-                </marker>
-                <marker id="arr-blue"   markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L12,6 L0,12 Z" fill="#3b82f6" />
-                </marker>
-                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
-                  <feGaussianBlur stdDeviation="3" result="blur" />
-                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
-                </filter>
-              </defs>
-
-              {edgePaths.map(({ path, key, type, active, user }) => {
-                const isCross = type === "h";
-                const stroke = user ? "#3b82f6" : active && isCross ? "#34d399" : active ? "#7dd3fc" : "#cbd5e1";
-                const marker = user ? "url(#arr-blue)" : active && isCross ? "url(#arr-green)" : active ? "url(#arr-sky)" : "url(#arr-muted)";
-                const animated = (active && isCross) || user;
-                const isSelected = selectedEdge === key;
-                return (
-                  <g key={key}>
-                    <path
-                      d={path}
-                      fill="none"
-                      stroke="transparent"
-                      strokeWidth={16}
-                      style={{ pointerEvents: "stroke", cursor: "pointer" }}
-                      onPointerDown={(e) => e.stopPropagation()}
-                      onPointerUp={() => setSelectedEdge(isSelected ? null : key)}
-                    />
-                    <path
-                      d={path}
-                      fill="none"
-                      stroke={isSelected ? "#ef4444" : stroke}
-                      strokeWidth={isCross ? 3 : 2.5}
-                      strokeLinecap="round"
-                      strokeDasharray={undefined}
-                      markerEnd={isSelected ? undefined : marker}
-                      filter={animated && !isSelected ? "url(#glow)" : undefined}
-                      style={{ pointerEvents: "none" }}
-                    />
-                  </g>
-                );
-              })}
-            </svg>
-
-            {/* Delete button — shown at midpoint of selected edge */}
-            {edgePaths.filter(({ key }) => key === selectedEdge).map(({ mx, my, key }) => (
-              <motion.button
-                key={key}
-                initial={{ opacity: 0, scale: 0.7 }}
-                animate={{ opacity: 1, scale: 1 }}
-                onPointerDown={(e) => e.stopPropagation()}
-                onPointerUp={() => { deleteEdge(key); setSelectedEdge(null); }}
-                title="Delete arrow"
-                style={{ left: mx - 10, top: my - 10 }}
-                className="absolute w-5 h-5 rounded-full bg-red-400 text-white hover:bg-red-500 flex items-center justify-center text-[10px] font-medium shadow-sm z-30 transition-colors"
-              >
-                ✕
-              </motion.button>
-            ))}
 
             {/* Dynamic columns */}
-            <div className="relative z-10 flex gap-10 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
+            <div className="relative flex gap-10 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
               {taskGroups.map((group) => (
                 <div key={group} className="flex flex-col items-center gap-6" style={{ minWidth: 260 }}>
                   <div className="w-full pb-3 border-b border-slate-200/60 flex items-baseline justify-between px-1">
@@ -639,6 +579,75 @@ export default function WorkflowMockup() {
               ))}
             </div>
 
+            <svg className="absolute inset-0 z-20" style={{ width: '100%', height: '100%', overflow: 'visible', pointerEvents: 'none' }}>
+              <defs>
+                <marker id="arr-green"  markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L12,6 L0,12 Z" fill="#34d399" />
+                </marker>
+                <marker id="arr-sky"    markerWidth="14" markerHeight="14" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#7dd3fc" />
+                </marker>
+                <marker id="arr-muted"  markerWidth="14" markerHeight="14" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8" />
+                </marker>
+                <marker id="arr-blue"   markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L12,6 L0,12 Z" fill="#3b82f6" />
+                </marker>
+                <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
+                  <feGaussianBlur stdDeviation="3" result="blur" />
+                  <feMerge><feMergeNode in="blur" /><feMergeNode in="SourceGraphic" /></feMerge>
+                </filter>
+              </defs>
+
+              {edgePaths.map(({ path, key, type, active, user }) => {
+                const isCross = type === "h";
+                const stroke = user ? "#3b82f6" : active && isCross ? "#34d399" : active ? "#7dd3fc" : "#cbd5e1";
+                const marker = user ? "url(#arr-blue)" : active && isCross ? "url(#arr-green)" : active ? "url(#arr-sky)" : "url(#arr-muted)";
+                const animated = (active && isCross) || user;
+                const isSelected = selectedEdge === key;
+                return (
+                  <g key={key}>
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke="transparent"
+                      strokeWidth={16}
+                      style={{ pointerEvents: "stroke", cursor: "pointer" }}
+                      onPointerDown={(e) => e.stopPropagation()}
+                      onPointerUp={(e) => { e.stopPropagation(); setSelectedEdge(isSelected ? null : key); }}
+                    />
+                    <path
+                      d={path}
+                      fill="none"
+                      stroke={isSelected ? "#ef4444" : stroke}
+                      strokeWidth={isCross ? 3 : 2.5}
+                      strokeLinecap="round"
+                      strokeDasharray={undefined}
+                      markerEnd={isSelected ? undefined : marker}
+                      filter={animated && !isSelected ? "url(#glow)" : undefined}
+                      style={{ pointerEvents: "none" }}
+                    />
+                  </g>
+                );
+              })}
+            </svg>
+
+            {/* Delete button — shown at midpoint of selected edge */}
+            {edgePaths.filter(({ key }) => key === selectedEdge).map(({ mx, my, key }) => (
+              <motion.button
+                key={key}
+                initial={{ opacity: 0, scale: 0.7 }}
+                animate={{ opacity: 1, scale: 1 }}
+                onPointerDown={(e) => e.stopPropagation()}
+                onPointerUp={() => { deleteEdge(key); setSelectedEdge(null); }}
+                title="Delete arrow"
+                style={{ left: mx - 10, top: my - 10 }}
+                className="absolute w-5 h-5 rounded-full bg-red-400 text-white hover:bg-red-500 flex items-center justify-center text-[10px] font-medium shadow-sm z-30 transition-colors"
+              >
+                ✕
+              </motion.button>
+            ))}
+
             </div>{/* close transform wrapper */}
 
             {/* Zoom controls */}
@@ -661,171 +670,278 @@ export default function WorkflowMockup() {
           </div>
         </div>
 
-        {/* Sidebar */}
-        <div className="w-64 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
-          {/* New Node button / form */}
-          {showNewNodeForm ? (
-            <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3.5">
-              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">New Node</div>
-              <div>
-                <label className="text-sm text-slate-500 font-medium">Task group</label>
-                <input
-                  type="text"
-                  list="task-groups"
-                  placeholder="e.g. ingestion"
-                  value={newNodeTask}
-                  onChange={(e) => setNewNodeTask(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
-                  autoFocus
-                />
-                <datalist id="task-groups">
-                  {taskGroups.map(g => <option key={g} value={g} />)}
-                </datalist>
-              </div>
-              <div>
-                <label className="text-sm text-slate-500 font-medium">Subtask name</label>
-                <input
-                  type="text"
-                  placeholder="e.g. parse logs"
-                  value={newNodeSubtask}
-                  onChange={(e) => setNewNodeSubtask(e.target.value)}
-                  onKeyDown={(e) => e.key === "Enter" && addNode()}
-                  className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
-                />
-              </div>
-              <div>
-                <label className="text-sm text-slate-500 font-medium">Type</label>
-                <select
-                  value={newNodeType}
-                  onChange={(e) => setNewNodeType(e.target.value)}
-                  className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
-                >
-                  <option value="approval">approval</option>
-                  <option value="verify">verify</option>
-                  <option value="wait">wait</option>
-                </select>
-              </div>
-              {tasks.length > 0 && (
+        {/* Sidebar — overlay panel on the right */}
+        <AnimatePresence>
+        {(selectedId && selectedNode || showNewNodeForm) && (
+          <motion.div
+            initial={{ opacity: 0, x: 20 }}
+            animate={{ opacity: 1, x: 0 }}
+            exit={{ opacity: 0, x: 20 }}
+            transition={{ duration: 0.15 }}
+            className="absolute top-0 right-0 z-40 w-64 max-h-full flex flex-col gap-3 overflow-y-auto p-3"
+          >
+            {showNewNodeForm && (
+              <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3.5">
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">New Node</div>
                 <div>
-                  <label className="text-sm text-slate-500 font-medium">Dependencies</label>
-                  <div className="max-h-40 overflow-y-auto space-y-1.5 mt-1.5">
-                    {tasks.map(t => (
-                      <label key={t.id} className="flex items-center gap-2 text-sm text-slate-600">
-                        <input
-                          type="checkbox"
-                          checked={newNodeDeps.includes(t.id)}
-                          onChange={(e) => {
-                            if (e.target.checked) setNewNodeDeps(d => [...d, t.id]);
-                            else setNewNodeDeps(d => d.filter(x => x !== t.id));
-                          }}
-                        />
-                        {t.subtask} <span className="text-slate-400">({t.task})</span>
-                      </label>
-                    ))}
-                  </div>
+                  <label className="text-sm text-slate-500 font-medium">Task group</label>
+                  <input
+                    type="text"
+                    list="task-groups"
+                    placeholder="e.g. ingestion"
+                    value={newNodeTask}
+                    onChange={(e) => setNewNodeTask(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
+                    autoFocus
+                  />
+                  <datalist id="task-groups">
+                    {taskGroups.map(g => <option key={g} value={g} />)}
+                  </datalist>
                 </div>
-              )}
-              <div className="flex gap-3">
-                <button
-                  onClick={addNode}
-                  disabled={!newNodeTask.trim() || !newNodeSubtask.trim()}
-                  className="flex-1 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-medium py-2 transition-colors"
-                >
-                  Create
-                </button>
-                <button
-                  onClick={() => { setShowNewNodeForm(false); setNewNodeTask(""); setNewNodeSubtask(""); setNewNodeDeps([]); }}
-                  className="rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 text-sm font-medium px-3.5 py-2 transition-colors"
-                >
-                  Cancel
-                </button>
-              </div>
-            </div>
-          ) : (
-            <button
-              onClick={() => setShowNewNodeForm(true)}
-              className="rounded-xl border border-dashed border-slate-200 bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-600 text-sm font-medium py-3 transition-colors"
-            >
-              + New Node
-            </button>
-          )}
-
-          {selectedId && selectedNode ? (
-            <>
-              <motion.div
-                key={selectedId}
-                initial={{ opacity: 0, x: 8 }}
-                animate={{ opacity: 1, x: 0 }}
-                className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3"
-              >
-                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Selected Task</div>
-                <div className="text-base font-semibold text-slate-800">{selectedNode.subtask}</div>
-                <div className="flex gap-3 text-[13px] text-slate-400">
-                  <span>{selectedNode.task}</span>
-                  <span>&middot;</span>
-                  <span>{selectedNode.type}</span>
+                <div>
+                  <label className="text-sm text-slate-500 font-medium">Subtask name</label>
+                  <input
+                    type="text"
+                    placeholder="e.g. parse logs"
+                    value={newNodeSubtask}
+                    onChange={(e) => setNewNodeSubtask(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && addNode()}
+                    className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
+                  />
                 </div>
-                <select
-                  value={selectedNode.state === 'blocked' || selectedNode.state === 'not started' ? 'not started' : selectedNode.state}
-                  onChange={(e) => {
-                    const val = e.target.value;
-                    const action = val === 'done' ? 'done' : val === 'waiting' ? 'waiting' : 'not started';
-                    updateTasks(applyAction(tasks, selectedId, action));
-                  }}
-                  className={`rounded-full border px-3 py-1 text-[13px] font-medium outline-none cursor-pointer ${BADGE_CLS[selectedNode.state]}`}
-                >
-                  <option value="not started">not started</option>
-                  <option value="waiting">waiting</option>
-                  <option value="done">done</option>
-                </select>
-                {selectedNode.deps.length > 0 && (
-                  <div>
-                    <div className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold mb-1.5">Dependencies</div>
-                    {selectedNode.deps.map(depId => {
-                      const dep = tasks.find(t => t.id === depId);
-                      return (
-                        <div key={depId} className="text-[13px] text-slate-500 ml-2">
-                          {dep ? `${dep.subtask} (${dep.task})` : depId}
-                        </div>
-                      );
-                    })}
-                  </div>
-                )}
-                {(selectedNode.state === 'not started' || selectedNode.state === 'waiting') && (
-                  <button
-                    onClick={() => handleAction(selectedId)}
-                    className="w-full rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-2 transition-colors"
+                <div>
+                  <label className="text-sm text-slate-500 font-medium">Type</label>
+                  <select
+                    value={newNodeType}
+                    onChange={(e) => setNewNodeType(e.target.value)}
+                    className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
                   >
-                    {selectedNode.state === 'waiting' ? 'Approve' : TYPE_LABELS[selectedNode.type] || 'Approve'}
-                  </button>
+                    <option value="approval">approval</option>
+                    <option value="verify">verify</option>
+                    <option value="wait">wait</option>
+                  </select>
+                </div>
+                {tasks.length > 0 && (
+                  <div>
+                    <label className="text-sm text-slate-500 font-medium">Dependencies</label>
+                    <div className="max-h-40 overflow-y-auto space-y-1.5 mt-1.5">
+                      {tasks.map(t => (
+                        <label key={t.id} className="flex items-center gap-2 text-sm text-slate-600">
+                          <input
+                            type="checkbox"
+                            checked={newNodeDeps.includes(t.id)}
+                            onChange={(e) => {
+                              if (e.target.checked) setNewNodeDeps(d => [...d, t.id]);
+                              else setNewNodeDeps(d => d.filter(x => x !== t.id));
+                            }}
+                          />
+                          {t.subtask} <span className="text-slate-400">({t.task})</span>
+                        </label>
+                      ))}
+                    </div>
+                  </div>
                 )}
-                <button
-                  onClick={() => deleteNode(selectedId)}
-                  className="w-full rounded-lg bg-white hover:bg-red-50 text-red-400 hover:text-red-500 text-[13px] font-medium py-2 transition-colors border border-slate-200/70"
-                >
-                  Delete Node
-                </button>
-              </motion.div>
-
-              {linkSource && (
-                <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-2.5">
-                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Arrow Mode</div>
-                  <div className="text-[13px] text-slate-500">Click any node to draw an arrow from this task.</div>
+                <div className="flex gap-3">
                   <button
-                    onClick={() => setLinkSource(null)}
-                    className="text-[13px] text-slate-400 hover:text-slate-600 underline"
+                    onClick={addNode}
+                    disabled={!newNodeTask.trim() || !newNodeSubtask.trim()}
+                    className="flex-1 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-medium py-2 transition-colors"
+                  >
+                    Create
+                  </button>
+                  <button
+                    onClick={() => { setShowNewNodeForm(false); setNewNodeTask(""); setNewNodeSubtask(""); setNewNodeDeps([]); }}
+                    className="rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 text-sm font-medium px-3.5 py-2 transition-colors"
                   >
                     Cancel
                   </button>
                 </div>
-              )}
-            </>
-          ) : (
-            <div className="rounded-xl border border-slate-200/70 bg-white p-5 text-[13px] text-slate-400 leading-relaxed">
-              Click a node to view details. Use the arrow button to draw connections. Click an arrow to delete it.
-            </div>
-          )}
-        </div>
+              </div>
+            )}
+
+            {selectedId && selectedNode && (
+              <>
+                <motion.div
+                  key={selectedId}
+                  initial={{ opacity: 0, x: 8 }}
+                  animate={{ opacity: 1, x: 0 }}
+                  className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3"
+                >
+                  <div className="flex items-center justify-between">
+                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">
+                      {editingNode ? "Edit Task" : "Selected Task"}
+                    </div>
+                    <button
+                      onClick={() => { setSelectedId(null); setLinkSource(null); setEditingNode(null); }}
+                      className="text-slate-300 hover:text-slate-500 text-sm leading-none transition-colors"
+                    >
+                      ✕
+                    </button>
+                  </div>
+
+                  {editingNode ? (
+                    <>
+                      <div>
+                        <label className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Task group</label>
+                        <input
+                          type="text"
+                          list="task-groups-edit"
+                          value={editingNode.task}
+                          onChange={(e) => setEditingNode(n => ({ ...n, task: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200/70 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
+                        />
+                        <datalist id="task-groups-edit">
+                          {taskGroups.map(g => <option key={g} value={g} />)}
+                        </datalist>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Subtask</label>
+                        <input
+                          type="text"
+                          value={editingNode.subtask}
+                          onChange={(e) => setEditingNode(n => ({ ...n, subtask: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200/70 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
+                        />
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Type</label>
+                        <select
+                          value={editingNode.type}
+                          onChange={(e) => setEditingNode(n => ({ ...n, type: e.target.value }))}
+                          className="w-full rounded-lg border border-slate-200/70 px-3 py-1.5 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
+                        >
+                          <option value="approval">approval</option>
+                          <option value="execute">execute</option>
+                          <option value="verify">verify</option>
+                          <option value="wait">wait</option>
+                        </select>
+                      </div>
+                      <div>
+                        <label className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold">Dependencies</label>
+                        <div className="max-h-36 overflow-y-auto space-y-1 mt-1.5">
+                          {tasks.filter(t => t.id !== selectedId).map(t => (
+                            <label key={t.id} className="flex items-center gap-2 text-[13px] text-slate-600">
+                              <input
+                                type="checkbox"
+                                checked={editingNode.deps.includes(t.id)}
+                                onChange={(e) => {
+                                  if (e.target.checked) setEditingNode(n => ({ ...n, deps: [...n.deps, t.id] }));
+                                  else setEditingNode(n => ({ ...n, deps: n.deps.filter(x => x !== t.id) }));
+                                }}
+                              />
+                              {t.subtask} <span className="text-slate-400">({t.task})</span>
+                            </label>
+                          ))}
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <button
+                          onClick={() => {
+                            const newId = `${editingNode.task.trim()}/${editingNode.subtask.trim()}`;
+                            const newTasks = tasks.map(t => {
+                              if (t.id === selectedId) {
+                                return { ...t, id: newId, task: editingNode.task.trim(), subtask: editingNode.subtask.trim(), type: editingNode.type, deps: editingNode.deps };
+                              }
+                              // Update deps referencing old id
+                              if (newId !== selectedId && t.deps.includes(selectedId)) {
+                                return { ...t, deps: t.deps.map(d => d === selectedId ? newId : d) };
+                              }
+                              return t;
+                            });
+                            updateTasks(newTasks);
+                            setSelectedId(newId);
+                            setEditingNode(null);
+                          }}
+                          disabled={!editingNode.task.trim() || !editingNode.subtask.trim()}
+                          className="flex-1 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-medium py-1.5 transition-colors"
+                        >
+                          Save
+                        </button>
+                        <button
+                          onClick={() => setEditingNode(null)}
+                          className="rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 text-sm font-medium px-3 py-1.5 transition-colors"
+                        >
+                          Cancel
+                        </button>
+                      </div>
+                    </>
+                  ) : (
+                    <>
+                      <div className="text-base font-semibold text-slate-800">{selectedNode.subtask}</div>
+                      <div className="flex gap-3 text-[13px] text-slate-400">
+                        <span>{selectedNode.task}</span>
+                        <span>&middot;</span>
+                        <span>{selectedNode.type}</span>
+                      </div>
+                      <select
+                        value={selectedNode.state === 'blocked' || selectedNode.state === 'not started' ? 'not started' : selectedNode.state}
+                        onChange={(e) => {
+                          const val = e.target.value;
+                          const action = val === 'done' ? 'done' : val === 'waiting' ? 'waiting' : 'not started';
+                          updateTasks(applyAction(tasks, selectedId, action));
+                        }}
+                        className={`rounded-full border px-3 py-1 text-[13px] font-medium outline-none cursor-pointer ${BADGE_CLS[selectedNode.state]}`}
+                      >
+                        <option value="not started">not started</option>
+                        <option value="waiting">waiting</option>
+                        <option value="done">done</option>
+                      </select>
+                      {selectedNode.deps.length > 0 && (
+                        <div>
+                          <div className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold mb-1.5">Dependencies</div>
+                          {selectedNode.deps.map(depId => {
+                            const dep = tasks.find(t => t.id === depId);
+                            return (
+                              <div key={depId} className="text-[13px] text-slate-500 ml-2">
+                                {dep ? `${dep.subtask} (${dep.task})` : depId}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      )}
+                      <div className="flex gap-2">
+                        {(selectedNode.state === 'not started' || selectedNode.state === 'waiting') && (
+                          <button
+                            onClick={() => handleAction(selectedId)}
+                            className="flex-1 rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-2 transition-colors"
+                          >
+                            {selectedNode.state === 'waiting' ? 'Approve' : TYPE_LABELS[selectedNode.type] || 'Approve'}
+                          </button>
+                        )}
+                        <button
+                          onClick={() => setEditingNode({ task: selectedNode.task, subtask: selectedNode.subtask, type: selectedNode.type, deps: [...selectedNode.deps] })}
+                          className="flex-1 rounded-lg bg-white hover:bg-slate-50 text-slate-600 text-sm font-medium py-2 transition-colors border border-slate-200/70"
+                        >
+                          Edit
+                        </button>
+                      </div>
+                      <button
+                        onClick={() => deleteNode(selectedId)}
+                        className="w-full rounded-lg bg-white hover:bg-red-50 text-red-400 hover:text-red-500 text-[13px] font-medium py-2 transition-colors border border-slate-200/70"
+                      >
+                        Delete Node
+                      </button>
+                    </>
+                  )}
+                </motion.div>
+
+                {linkSource && (
+                  <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-2.5">
+                    <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Arrow Mode</div>
+                    <div className="text-[13px] text-slate-500">Click any node to draw an arrow from this task.</div>
+                    <button
+                      onClick={() => setLinkSource(null)}
+                      className="text-[13px] text-slate-400 hover:text-slate-600 underline"
+                    >
+                      Cancel
+                    </button>
+                  </div>
+                )}
+              </>
+            )}
+          </motion.div>
+        )}
+        </AnimatePresence>
 
       </div>
     </div>
