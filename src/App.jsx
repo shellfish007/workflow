@@ -41,17 +41,17 @@ const saveTasks = async (tasks) => {
 // --- State styling ---
 
 const STATE_CLS = {
-  blocked:  { dot: "bg-slate-300",   badge: "bg-slate-100 text-slate-500 border-slate-200",        card: "border-slate-200 shadow-sm" },
-  "not started": { dot: "bg-blue-400",    badge: "bg-blue-50 text-blue-700 border-blue-200",           card: "border-blue-200 shadow-blue-100/50 shadow-md" },
-  waiting:  { dot: "bg-amber-400",   badge: "bg-amber-50 text-amber-700 border-amber-200",        card: "border-amber-200 shadow-amber-100/50 shadow-md" },
-  done:     { dot: "bg-emerald-400", badge: "bg-emerald-50 text-emerald-700 border-emerald-200", card: "border-emerald-200 shadow-emerald-100/50 shadow-md" },
+  blocked:      { border: "border-l-slate-300",   badge: "bg-slate-50 text-slate-500",          card: "border-slate-200/70" },
+  "not started":{ border: "border-l-blue-400",    badge: "bg-blue-50/80 text-blue-600",         card: "border-slate-200/70" },
+  waiting:      { border: "border-l-amber-400",   badge: "bg-amber-50/80 text-amber-600",       card: "border-slate-200/70" },
+  done:         { border: "border-l-emerald-400", badge: "bg-emerald-50/80 text-emerald-600",   card: "border-slate-200/70" },
 };
 
 const BADGE_CLS = {
-  blocked:  "bg-slate-100 text-slate-600 border-slate-200",
-  "not started": "bg-blue-50 text-blue-700 border-blue-200",
-  waiting:  "bg-amber-50 text-amber-700 border-amber-200",
-  done:     "bg-emerald-50 text-emerald-700 border-emerald-200",
+  blocked:      "bg-slate-50 text-slate-500 border-slate-200/70",
+  "not started":"bg-blue-50/80 text-blue-600 border-blue-200/70",
+  waiting:      "bg-amber-50/80 text-amber-600 border-amber-200/70",
+  done:         "bg-emerald-50/80 text-emerald-600 border-emerald-200/70",
 };
 
 const TYPE_LABELS = {
@@ -94,27 +94,22 @@ const NodeCard = forwardRef(function NodeCard({ title, state, type, isSelected, 
       transition={{ duration: 0.15 }}
       className={isLinkTarget ? "cursor-crosshair" : "cursor-grab active:cursor-grabbing"}
     >
-      <div className={`relative w-52 rounded-2xl border-2 bg-white/95 backdrop-blur p-3.5 space-y-2.5 transition-shadow ${s.card} ${isSelected ? "ring-2 ring-blue-600 ring-offset-2" : ""} ${isLinkTarget ? "ring-2 ring-blue-400 ring-offset-2" : ""}`}>
+      <div className={`relative w-52 rounded-xl border border-l-[3px] bg-white p-4 space-y-3 transition-shadow shadow-sm hover:shadow-md ${s.card} ${s.border} ${isSelected ? "ring-2 ring-blue-500 ring-offset-2" : ""} ${isLinkTarget ? "ring-2 ring-blue-400 ring-offset-2" : ""}`}>
         {isLinkTarget && (
           <div
-            className="absolute inset-0 z-10 rounded-2xl cursor-crosshair"
+            className="absolute inset-0 z-10 rounded-xl cursor-crosshair"
             onPointerDown={(e) => e.stopPropagation()}
             onPointerUp={(e) => { e.stopPropagation(); onClick(); }}
           />
         )}
-        <div className="flex items-start justify-between gap-2">
-          <span className="text-sm font-semibold text-slate-800 tracking-tight leading-snug">{title}</span>
-          <span className={`h-2.5 w-2.5 rounded-full flex-shrink-0 mt-0.5 ring-2 ring-white ${s.dot}`} />
-        </div>
-        <div className="flex items-center gap-2">
-          <span className={`inline-flex rounded-full border px-2.5 py-0.5 text-xs font-medium ${s.badge}`}>
-            {state}
-          </span>
-        </div>
+        <span className="block text-[13px] font-semibold text-slate-700 leading-snug">{title}</span>
+        <span className={`inline-flex rounded-full px-2.5 py-0.5 text-[11px] font-medium ${s.badge}`}>
+          {state}
+        </span>
         {state !== 'done' && state !== 'blocked' && (
           <button
             onClick={(e) => { e.stopPropagation(); onAction(); }}
-            className="w-full rounded-xl border-2 border-emerald-300 bg-emerald-50 hover:bg-emerald-500 hover:text-white hover:border-emerald-500 py-2 text-sm font-bold text-emerald-600 cursor-pointer transition-all shadow-sm"
+            className="w-full rounded-lg border border-slate-200 bg-white hover:bg-slate-50 py-1.5 text-[13px] font-semibold text-slate-600 cursor-pointer transition-colors"
           >
             Done
           </button>
@@ -131,10 +126,10 @@ function ConnectButton({ id, linkSource, onConnect }) {
       onPointerDown={(e) => { e.stopPropagation(); }}
       onPointerUp={(e) => { e.stopPropagation(); onConnect(id); }}
       title={isActive ? "Cancel connection" : "Draw arrow from this node"}
-      className={`flex-shrink-0 w-9 h-9 rounded-full border-2 flex items-center justify-center text-base font-bold transition-all shadow-sm ${
+      className={`flex-shrink-0 w-8 h-8 rounded-full border flex items-center justify-center text-sm font-medium transition-all ${
         isActive
-          ? "bg-blue-500 text-white border-blue-500 scale-110"
-          : "bg-white border-blue-200 text-blue-400 hover:bg-blue-50 hover:border-blue-400 hover:text-blue-600"
+          ? "bg-blue-500 text-white border-blue-500"
+          : "bg-white border-slate-200 text-slate-400 hover:bg-slate-50 hover:border-slate-300 hover:text-slate-600"
       }`}
     >
       →
@@ -189,8 +184,15 @@ export default function WorkflowMockup() {
     });
   };
 
-  const handleCanvasPointerUp = () => {
+  const handleCanvasPointerUp = (e) => {
+    const wasDrag = isPanning.current &&
+      (Math.abs(e.clientX - panStart.current.x) > 3 || Math.abs(e.clientY - panStart.current.y) > 3);
     isPanning.current = false;
+    if (!wasDrag) {
+      setSelectedId(null);
+      setSelectedEdge(null);
+      setLinkSource(null);
+    }
   };
 
   const handleWheel = useCallback((e) => {
@@ -467,8 +469,8 @@ export default function WorkflowMockup() {
 
   if (loading) {
     return (
-      <div className="h-screen flex items-center justify-center bg-gradient-to-b from-blue-50 via-sky-50 to-white">
-        <div className="text-xl text-slate-500 font-semibold">Loading workflow...</div>
+      <div className="h-screen flex items-center justify-center bg-slate-50">
+        <div className="text-base text-slate-400 font-medium">Loading workflow...</div>
       </div>
     );
   }
@@ -478,30 +480,30 @@ export default function WorkflowMockup() {
   const colWidth = Math.floor(88 / colCount);
 
   return (
-    <div className="h-screen overflow-hidden bg-gradient-to-b from-blue-50 via-sky-50 to-white p-4 flex flex-col gap-3">
+    <div className="h-screen overflow-hidden bg-slate-50 p-5 flex flex-col gap-4">
 
       {/* Header */}
-      <div className="flex-shrink-0 rounded-2xl border border-blue-100 bg-white/70 backdrop-blur shadow-md px-5 py-3">
+      <div className="flex-shrink-0 px-1 py-1">
         <div className="flex items-center justify-between">
           <div className="flex items-baseline gap-3">
-            <h1 className="text-xl font-bold text-slate-800 tracking-tight">Workflow</h1>
-            <p className="text-sm text-slate-400">{tasks.length} tasks &middot; {taskGroups.length} groups</p>
+            <h1 className="text-lg font-semibold text-slate-800 tracking-tight">Workflow</h1>
+            <p className="text-sm text-slate-400 font-normal">{tasks.length} tasks &middot; {taskGroups.length} groups</p>
           </div>
-          <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex items-center gap-1.5 flex-wrap">
             {counts.map(({ state, n }) => (
-              <span key={state} className={`rounded-full border px-3 py-0.5 text-xs font-semibold ${BADGE_CLS[state]}`}>
+              <span key={state} className={`rounded-full border px-2.5 py-0.5 text-[11px] font-medium ${BADGE_CLS[state]}`}>
                 {n} {state}
               </span>
             ))}
             <button
               onClick={() => setHideCompleted(h => !h)}
-              className={`ml-1 flex items-center gap-1.5 rounded-full border px-3 py-0.5 text-xs font-semibold transition-colors ${
+              className={`ml-1.5 flex items-center gap-1.5 rounded-full border px-2.5 py-0.5 text-[11px] font-medium transition-colors ${
                 hideCompleted
-                  ? "bg-emerald-100 text-emerald-700 border-emerald-300"
-                  : "bg-slate-50 text-slate-500 border-slate-200 hover:bg-slate-100"
+                  ? "bg-emerald-50 text-emerald-600 border-emerald-200/70"
+                  : "bg-white text-slate-500 border-slate-200/70 hover:bg-slate-50"
               }`}
             >
-              <span className={`inline-block w-3 h-3 rounded-sm border-2 transition-colors ${hideCompleted ? "bg-emerald-500 border-emerald-500" : "border-slate-300"}`} />
+              <span className={`inline-block w-2.5 h-2.5 rounded-sm border transition-colors ${hideCompleted ? "bg-emerald-500 border-emerald-500" : "border-slate-300"}`} />
               Hide done
             </button>
           </div>
@@ -512,29 +514,29 @@ export default function WorkflowMockup() {
       <div className="flex gap-4 flex-1 min-h-0">
 
         {/* Canvas card */}
-        <div className="flex-1 min-h-0 rounded-2xl border border-blue-100 bg-white/80 backdrop-blur shadow-md p-3">
+        <div className="flex-1 min-h-0 rounded-xl border border-slate-200/70 bg-white shadow-sm p-2">
           <div
             ref={containerRef}
             onPointerDown={handleCanvasPointerDown}
             onPointerMove={handleCanvasPointerMove}
             onPointerUp={handleCanvasPointerUp}
-            className="relative w-full h-full rounded-[28px] bg-gradient-to-b from-white to-blue-50/60 border border-blue-100/80 overflow-hidden cursor-grab active:cursor-grabbing"
+            className="relative w-full h-full rounded-lg bg-slate-50/50 overflow-hidden cursor-grab active:cursor-grabbing"
             data-canvas-bg
           >
             <div ref={innerRef} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }} className="relative w-fit h-fit">
             <svg className="absolute inset-0 z-20" style={{ pointerEvents: "none", width: '100%', height: '100%', overflow: 'visible' }}>
               <defs>
-                <marker id="arr-green"  markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L7,3.5 L0,7 Z" fill="#34d399" />
+                <marker id="arr-green"  markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L12,6 L0,12 Z" fill="#34d399" />
                 </marker>
-                <marker id="arr-sky"    markerWidth="8"  markerHeight="8"  refX="6" refY="3"   orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#7dd3fc" />
+                <marker id="arr-sky"    markerWidth="14" markerHeight="14" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#7dd3fc" />
                 </marker>
-                <marker id="arr-muted"  markerWidth="8"  markerHeight="8"  refX="6" refY="3"   orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L6,3 L0,6 Z" fill="#94a3b8" />
+                <marker id="arr-muted"  markerWidth="14" markerHeight="14" refX="10" refY="5" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L10,5 L0,10 Z" fill="#94a3b8" />
                 </marker>
-                <marker id="arr-blue"   markerWidth="10" markerHeight="10" refX="7" refY="3.5" orient="auto" markerUnits="userSpaceOnUse">
-                  <path d="M0,0 L7,3.5 L0,7 Z" fill="#3b82f6" />
+                <marker id="arr-blue"   markerWidth="16" markerHeight="16" refX="12" refY="6" orient="auto" markerUnits="userSpaceOnUse">
+                  <path d="M0,0 L12,6 L0,12 Z" fill="#3b82f6" />
                 </marker>
                 <filter id="glow" x="-50%" y="-50%" width="200%" height="200%">
                   <feGaussianBlur stdDeviation="3" result="blur" />
@@ -584,21 +586,21 @@ export default function WorkflowMockup() {
                 onPointerDown={(e) => e.stopPropagation()}
                 onPointerUp={() => { deleteEdge(key); setSelectedEdge(null); }}
                 title="Delete arrow"
-                style={{ left: mx - 14, top: my - 14 }}
-                className="absolute w-7 h-7 rounded-full bg-red-500 text-white hover:bg-red-600 flex items-center justify-center text-xs font-bold shadow-lg z-30 transition-colors"
+                style={{ left: mx - 10, top: my - 10 }}
+                className="absolute w-5 h-5 rounded-full bg-red-400 text-white hover:bg-red-500 flex items-center justify-center text-[10px] font-medium shadow-sm z-30 transition-colors"
               >
                 ✕
               </motion.button>
             ))}
 
             {/* Dynamic columns */}
-            <div className="relative z-10 flex gap-8 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
+            <div className="relative z-10 flex gap-10 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
               {taskGroups.map((group) => (
-                <div key={group} className="flex flex-col items-center gap-8" style={{ minWidth: 260 }}>
-                  <div className="sticky top-0 z-10 flex flex-col items-center gap-2 bg-white/90 backdrop-blur rounded-2xl px-4 py-2 border border-blue-100/60 shadow-sm w-full">
-                    <div className="text-base font-bold tracking-tight text-slate-700 capitalize">{group}</div>
-                    <span className="rounded-full bg-blue-50 px-3 py-0.5 text-xs font-semibold text-blue-600 border border-blue-100">
-                      {tasksByGroup[group].length} tasks
+                <div key={group} className="flex flex-col items-center gap-6" style={{ minWidth: 260 }}>
+                  <div className="w-full pb-3 border-b border-slate-200/60 flex items-baseline justify-between px-1">
+                    <span className="text-sm font-semibold text-slate-600 capitalize">{group}</span>
+                    <span className="text-[11px] text-slate-400 font-normal">
+                      {tasksByGroup[group].length}
                     </span>
                   </div>
                   {(() => {
@@ -640,10 +642,10 @@ export default function WorkflowMockup() {
             </div>{/* close transform wrapper */}
 
             {/* Zoom controls */}
-            <div className="absolute bottom-3 right-3 z-30 flex items-center gap-1 bg-white/90 backdrop-blur rounded-xl border border-slate-200 shadow-sm px-1 py-1">
-              <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 font-bold text-sm">−</button>
-              <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="px-2 h-7 rounded-lg hover:bg-slate-100 text-xs font-medium text-slate-500 min-w-[3rem]">{Math.round(zoom * 100)}%</button>
-              <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="w-7 h-7 rounded-lg hover:bg-slate-100 text-slate-500 font-bold text-sm">+</button>
+            <div className="absolute bottom-3 right-3 z-30 flex items-center gap-0.5 bg-white/80 rounded-lg border border-slate-200/60 px-0.5 py-0.5">
+              <button onClick={() => setZoom(z => Math.max(0.3, z - 0.1))} className="w-6 h-6 rounded hover:bg-slate-100 text-slate-400 text-xs">−</button>
+              <button onClick={() => { setZoom(1); setPan({ x: 0, y: 0 }); }} className="px-1.5 h-6 rounded hover:bg-slate-100 text-[11px] text-slate-400 min-w-[2.5rem]">{Math.round(zoom * 100)}%</button>
+              <button onClick={() => setZoom(z => Math.min(2, z + 0.1))} className="w-6 h-6 rounded hover:bg-slate-100 text-slate-400 text-xs">+</button>
             </div>
 
             {/* Hint toast */}
@@ -651,7 +653,7 @@ export default function WorkflowMockup() {
               <motion.div
                 initial={{ opacity: 0, y: 6 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-blue-500/90 text-white text-sm font-semibold px-6 py-3 rounded-full shadow-lg pointer-events-none whitespace-nowrap z-50"
+                className="fixed bottom-8 left-1/2 -translate-x-1/2 bg-slate-800 text-white text-[13px] font-medium px-5 py-2.5 rounded-lg shadow-lg pointer-events-none whitespace-nowrap z-50"
               >
                 Click any node to draw an arrow from "{tasks.find(t => t.id === linkSource)?.subtask}"
               </motion.div>
@@ -660,11 +662,11 @@ export default function WorkflowMockup() {
         </div>
 
         {/* Sidebar */}
-        <div className="w-72 flex-shrink-0 flex flex-col gap-4 overflow-y-auto">
+        <div className="w-64 flex-shrink-0 flex flex-col gap-3 overflow-y-auto">
           {/* New Node button / form */}
           {showNewNodeForm ? (
-            <div className="rounded-3xl border border-blue-100 shadow-md bg-white/80 backdrop-blur p-6 space-y-4">
-              <div className="text-sm font-semibold text-blue-600 uppercase tracking-wide">New Node</div>
+            <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3.5">
+              <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">New Node</div>
               <div>
                 <label className="text-sm text-slate-500 font-medium">Task group</label>
                 <input
@@ -673,7 +675,7 @@ export default function WorkflowMockup() {
                   placeholder="e.g. ingestion"
                   value={newNodeTask}
                   onChange={(e) => setNewNodeTask(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 mt-1"
+                  className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
                   autoFocus
                 />
                 <datalist id="task-groups">
@@ -688,7 +690,7 @@ export default function WorkflowMockup() {
                   value={newNodeSubtask}
                   onChange={(e) => setNewNodeSubtask(e.target.value)}
                   onKeyDown={(e) => e.key === "Enter" && addNode()}
-                  className="w-full rounded-xl border border-slate-200 px-4 py-2.5 text-base focus:outline-none focus:ring-2 focus:ring-blue-400 mt-1"
+                  className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
                 />
               </div>
               <div>
@@ -696,7 +698,7 @@ export default function WorkflowMockup() {
                 <select
                   value={newNodeType}
                   onChange={(e) => setNewNodeType(e.target.value)}
-                  className="w-full rounded-xl border border-slate-200 px-3 py-2 text-sm focus:outline-none focus:ring-2 focus:ring-blue-400 mt-1"
+                  className="w-full rounded-lg border border-slate-200/70 px-3 py-2 text-sm focus:outline-none focus:ring-1 focus:ring-blue-400 mt-1"
                 >
                   <option value="approval">approval</option>
                   <option value="verify">verify</option>
@@ -727,13 +729,13 @@ export default function WorkflowMockup() {
                 <button
                   onClick={addNode}
                   disabled={!newNodeTask.trim() || !newNodeSubtask.trim()}
-                  className="flex-1 rounded-xl bg-blue-500 hover:bg-blue-600 disabled:bg-slate-200 disabled:text-slate-400 text-white text-sm font-semibold py-2.5 transition-colors shadow-sm"
+                  className="flex-1 rounded-lg bg-slate-800 hover:bg-slate-900 disabled:bg-slate-100 disabled:text-slate-400 text-white text-sm font-medium py-2 transition-colors"
                 >
                   Create
                 </button>
                 <button
                   onClick={() => { setShowNewNodeForm(false); setNewNodeTask(""); setNewNodeSubtask(""); setNewNodeDeps([]); }}
-                  className="rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-600 text-sm font-medium px-4 py-2.5 transition-colors"
+                  className="rounded-lg bg-slate-50 hover:bg-slate-100 text-slate-500 text-sm font-medium px-3.5 py-2 transition-colors"
                 >
                   Cancel
                 </button>
@@ -742,7 +744,7 @@ export default function WorkflowMockup() {
           ) : (
             <button
               onClick={() => setShowNewNodeForm(true)}
-              className="rounded-3xl border-2 border-dashed border-blue-200 bg-white/60 hover:bg-blue-50/80 text-blue-500 hover:text-blue-600 text-base font-semibold py-4 transition-colors shadow-sm"
+              className="rounded-xl border border-dashed border-slate-200 bg-white hover:bg-slate-50 text-slate-400 hover:text-slate-600 text-sm font-medium py-3 transition-colors"
             >
               + New Node
             </button>
@@ -754,12 +756,15 @@ export default function WorkflowMockup() {
                 key={selectedId}
                 initial={{ opacity: 0, x: 8 }}
                 animate={{ opacity: 1, x: 0 }}
-                className="rounded-3xl border border-blue-100 shadow-md bg-white/80 backdrop-blur p-6 space-y-4"
+                className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-3"
               >
-                <div className="text-sm font-semibold text-blue-600 uppercase tracking-wide">Selected Task</div>
-                <div className="text-lg font-bold text-slate-800">{selectedNode.subtask}</div>
-                <div className="text-sm text-slate-400">Group: {selectedNode.task}</div>
-                <div className="text-sm text-slate-400">Type: {selectedNode.type}</div>
+                <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Selected Task</div>
+                <div className="text-base font-semibold text-slate-800">{selectedNode.subtask}</div>
+                <div className="flex gap-3 text-[13px] text-slate-400">
+                  <span>{selectedNode.task}</span>
+                  <span>&middot;</span>
+                  <span>{selectedNode.type}</span>
+                </div>
                 <select
                   value={selectedNode.state === 'blocked' || selectedNode.state === 'not started' ? 'not started' : selectedNode.state}
                   onChange={(e) => {
@@ -767,7 +772,7 @@ export default function WorkflowMockup() {
                     const action = val === 'done' ? 'done' : val === 'waiting' ? 'waiting' : 'not started';
                     updateTasks(applyAction(tasks, selectedId, action));
                   }}
-                  className={`rounded-full border px-3.5 py-1.5 text-sm font-medium outline-none cursor-pointer ${BADGE_CLS[selectedNode.state]}`}
+                  className={`rounded-full border px-3 py-1 text-[13px] font-medium outline-none cursor-pointer ${BADGE_CLS[selectedNode.state]}`}
                 >
                   <option value="not started">not started</option>
                   <option value="waiting">waiting</option>
@@ -775,11 +780,11 @@ export default function WorkflowMockup() {
                 </select>
                 {selectedNode.deps.length > 0 && (
                   <div>
-                    <div className="text-sm text-slate-400 mb-1.5 font-medium">Dependencies:</div>
+                    <div className="text-[11px] text-slate-400 uppercase tracking-wider font-semibold mb-1.5">Dependencies</div>
                     {selectedNode.deps.map(depId => {
                       const dep = tasks.find(t => t.id === depId);
                       return (
-                        <div key={depId} className="text-sm text-slate-600 ml-3">
+                        <div key={depId} className="text-[13px] text-slate-500 ml-2">
                           {dep ? `${dep.subtask} (${dep.task})` : depId}
                         </div>
                       );
@@ -789,26 +794,26 @@ export default function WorkflowMockup() {
                 {(selectedNode.state === 'not started' || selectedNode.state === 'waiting') && (
                   <button
                     onClick={() => handleAction(selectedId)}
-                    className="w-full rounded-xl bg-blue-500 hover:bg-blue-600 text-white text-sm font-semibold py-2.5 transition-colors shadow-sm"
+                    className="w-full rounded-lg bg-slate-800 hover:bg-slate-900 text-white text-sm font-medium py-2 transition-colors"
                   >
                     {selectedNode.state === 'waiting' ? 'Approve' : TYPE_LABELS[selectedNode.type] || 'Approve'}
                   </button>
                 )}
                 <button
                   onClick={() => deleteNode(selectedId)}
-                  className="w-full rounded-xl bg-red-50 hover:bg-red-100 text-red-500 hover:text-red-600 text-sm font-medium py-2.5 transition-colors border border-red-200"
+                  className="w-full rounded-lg bg-white hover:bg-red-50 text-red-400 hover:text-red-500 text-[13px] font-medium py-2 transition-colors border border-slate-200/70"
                 >
                   Delete Node
                 </button>
               </motion.div>
 
               {linkSource && (
-                <div className="rounded-3xl border border-blue-100 shadow-md bg-white/80 backdrop-blur p-6 space-y-3">
-                  <div className="text-sm font-semibold text-blue-500 uppercase tracking-wide">Arrow Mode</div>
-                  <div className="text-base text-slate-500">Click any node to draw an arrow from this task.</div>
+                <div className="rounded-xl border border-slate-200/70 bg-white p-5 space-y-2.5">
+                  <div className="text-[11px] font-semibold text-slate-400 uppercase tracking-wider">Arrow Mode</div>
+                  <div className="text-[13px] text-slate-500">Click any node to draw an arrow from this task.</div>
                   <button
                     onClick={() => setLinkSource(null)}
-                    className="text-sm text-slate-400 hover:text-slate-600 underline mt-1"
+                    className="text-[13px] text-slate-400 hover:text-slate-600 underline"
                   >
                     Cancel
                   </button>
@@ -816,7 +821,7 @@ export default function WorkflowMockup() {
               )}
             </>
           ) : (
-            <div className="rounded-3xl border border-blue-100 shadow-md bg-white/80 backdrop-blur p-6 text-base text-slate-400 leading-relaxed">
+            <div className="rounded-xl border border-slate-200/70 bg-white p-5 text-[13px] text-slate-400 leading-relaxed">
               Click a node to view details. Use the arrow button to draw connections. Click an arrow to delete it.
             </div>
           )}
