@@ -60,6 +60,29 @@ const TYPE_LABELS = {
   wait:     "Unblock",
 };
 
+// --- Topological sort within groups ---
+
+function topoSortGroup(groupTasks, allTasks) {
+  const byId = Object.fromEntries(allTasks.map(t => [t.id, t]));
+  const groupIds = new Set(groupTasks.map(t => t.id));
+  const layers = {};
+  const visiting = new Set();
+
+  function getLayer(id) {
+    if (layers[id] !== undefined) return layers[id];
+    if (visiting.has(id)) return 0;
+    visiting.add(id);
+    const task = byId[id];
+    if (!task || task.deps.length === 0) { layers[id] = 0; return 0; }
+    const depLayers = task.deps.filter(d => byId[d]).map(d => getLayer(d));
+    layers[id] = depLayers.length > 0 ? Math.max(...depLayers) + 1 : 0;
+    return layers[id];
+  }
+  groupTasks.forEach(t => getLayer(t.id));
+
+  return [...groupTasks].sort((a, b) => (layers[a.id] ?? 0) - (layers[b.id] ?? 0));
+}
+
 // bezier midpoint at t=0.5: 0.125*P0 + 0.375*P1 + 0.375*P2 + 0.125*P3
 function bezierMid(x0, y0, cx1, cy1, cx2, cy2, x1, y1) {
   return {
@@ -68,7 +91,7 @@ function bezierMid(x0, y0, cx1, cy1, cx2, cy2, x1, y1) {
   };
 }
 
-const NodeCard = forwardRef(function NodeCard({ title, state, type, isSelected, isLinkTarget, onClick, onAction, onDrag, onDragEnd, savedX, savedY }, ref) {
+const NodeCard = forwardRef(function NodeCard({ title, group, state, type, isSelected, isLinkTarget, onClick, onAction, onDrag, onDragEnd, savedX, savedY }, ref) {
   const s = STATE_CLS[state] ?? STATE_CLS["blocked"];
   const actionLabel = TYPE_LABELS[type] || "Approve";
 
@@ -242,15 +265,18 @@ export default function WorkflowMockup() {
   const tasksByGroup = {};
   const nodeCol = {};
   taskGroups.forEach((group, i) => {
-    tasksByGroup[group] = visibleTasks.filter(t => t.task === group);
+    tasksByGroup[group] = topoSortGroup(
+      visibleTasks.filter(t => t.task === group),
+      tasks
+    );
     tasksByGroup[group].forEach(t => { nodeCol[t.id] = i; });
   });
 
   // --- Derive edges from deps ---
 
-  const baseEdges = tasks.flatMap(t =>
+  const baseEdges = visibleTasks.flatMap(t =>
     t.deps
-      .filter(depId => tasks.some(x => x.id === depId))
+      .filter(depId => visibleTasks.some(x => x.id === depId))
       .map(depId => ({
         from: depId,
         to: t.id,
@@ -439,13 +465,14 @@ export default function WorkflowMockup() {
   const selectedNode = tasks.find((n) => n.id === selectedId);
 
   const renderNode = (id) => {
-    const node = tasks.find((n) => n.id === id);
+    const node = visibleTasks.find((n) => n.id === id);
     if (!node) return null;
     return (
       <div className="group flex items-center gap-2">
         <NodeCard
           ref={refFor(id)}
           title={node.subtask}
+          group={node.task}
           state={node.state}
           type={node.type}
           isSelected={selectedId === id && !linkSource}
@@ -476,10 +503,6 @@ export default function WorkflowMockup() {
       </div>
     );
   }
-
-  // --- Column width calculation ---
-  const colCount = taskGroups.length || 1;
-  const colWidth = Math.floor(88 / colCount);
 
   return (
     <div className="h-screen overflow-hidden bg-slate-50 p-5 flex flex-col gap-4">
@@ -534,7 +557,7 @@ export default function WorkflowMockup() {
             <div ref={innerRef} style={{ transform: `translate(${pan.x}px, ${pan.y}px) scale(${zoom})`, transformOrigin: '0 0' }} className="relative w-fit h-fit">
 
             {/* Dynamic columns */}
-            <div className="relative flex gap-10 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
+            <div className="relative z-10 flex gap-10 px-6 py-6" style={{ minWidth: `${taskGroups.length * 280}px` }}>
               {taskGroups.map((group) => (
                 <div key={group} className="flex flex-col items-center gap-6" style={{ minWidth: 260 }}>
                   <div className="w-full pb-3 border-b border-slate-200/60 flex items-baseline justify-between px-1">
@@ -544,13 +567,11 @@ export default function WorkflowMockup() {
                     </span>
                   </div>
                   {(() => {
-                    // Group sibling nodes (same deps) into rows
                     const groupTasks = tasksByGroup[group];
                     const rows = [];
                     const placed = new Set();
                     groupTasks.forEach(t => {
                       if (placed.has(t.id)) return;
-                      // Find siblings: same deps within this group
                       const depsKey = JSON.stringify([...t.deps].sort());
                       const siblings = t.deps.length > 0
                         ? groupTasks.filter(s => !placed.has(s.id) && JSON.stringify([...s.deps].sort()) === depsKey)
