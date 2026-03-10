@@ -234,6 +234,81 @@ export default function WorkflowMockup() {
     return () => el.removeEventListener('wheel', handleWheel);
   }, [handleWheel]);
 
+  // --- Keyboard shortcuts ---
+  useEffect(() => {
+    const handler = (e) => {
+      // Skip if user is typing in an input/select/textarea
+      const tag = e.target.tagName;
+      if (tag === 'INPUT' || tag === 'TEXTAREA' || tag === 'SELECT') return;
+
+      // Escape: deselect, close sidebar/forms, cancel link mode
+      if (e.key === 'Escape') {
+        if (linkSource) { setLinkSource(null); return; }
+        if (editingNode) { setEditingNode(null); return; }
+        if (showNewNodeForm) { setShowNewNodeForm(false); return; }
+        if (selectedEdge) { setSelectedEdge(null); return; }
+        if (selectedId) { setSelectedId(null); return; }
+      }
+
+      // Delete/Backspace: delete selected edge or node
+      if (e.key === 'Delete' || e.key === 'Backspace') {
+        if (selectedEdge) {
+          deleteEdge(selectedEdge);
+          setSelectedEdge(null);
+          return;
+        }
+        if (selectedId && !editingNode) {
+          deleteNode(selectedId);
+          return;
+        }
+      }
+
+      // Arrow keys: navigate between visible nodes
+      if (['ArrowUp', 'ArrowDown', 'ArrowLeft', 'ArrowRight'].includes(e.key)) {
+        e.preventDefault();
+        const ids = visibleTasks.map(t => t.id);
+        if (ids.length === 0) return;
+        if (!selectedId || !ids.includes(selectedId)) {
+          setSelectedId(ids[0]);
+          return;
+        }
+        const idx = ids.indexOf(selectedId);
+        const colOfSelected = nodeCol[selectedId];
+
+        if (e.key === 'ArrowDown') {
+          // Next node in same column, or wrap
+          const sameCol = ids.filter(id => nodeCol[id] === colOfSelected);
+          const ci = sameCol.indexOf(selectedId);
+          if (ci < sameCol.length - 1) setSelectedId(sameCol[ci + 1]);
+        } else if (e.key === 'ArrowUp') {
+          const sameCol = ids.filter(id => nodeCol[id] === colOfSelected);
+          const ci = sameCol.indexOf(selectedId);
+          if (ci > 0) setSelectedId(sameCol[ci - 1]);
+        } else if (e.key === 'ArrowRight') {
+          // Move to next column
+          const cols = [...new Set(ids.map(id => nodeCol[id]))].sort((a, b) => a - b);
+          const ci = cols.indexOf(colOfSelected);
+          if (ci < cols.length - 1) {
+            const nextCol = cols[ci + 1];
+            const nextColIds = ids.filter(id => nodeCol[id] === nextCol);
+            if (nextColIds.length > 0) setSelectedId(nextColIds[0]);
+          }
+        } else if (e.key === 'ArrowLeft') {
+          const cols = [...new Set(ids.map(id => nodeCol[id]))].sort((a, b) => a - b);
+          const ci = cols.indexOf(colOfSelected);
+          if (ci > 0) {
+            const prevCol = cols[ci - 1];
+            const prevColIds = ids.filter(id => nodeCol[id] === prevCol);
+            if (prevColIds.length > 0) setSelectedId(prevColIds[0]);
+          }
+        }
+      }
+    };
+
+    window.addEventListener('keydown', handler);
+    return () => window.removeEventListener('keydown', handler);
+  }, [selectedId, selectedEdge, linkSource, editingNode, showNewNodeForm, visibleTasks, nodeCol]);
+
   // --- Data helpers ---
 
   const updateTasks = useCallback(async (newTasks) => {
